@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+
+  router:
+    environment:
+      SELF_SIGNED_ONLY: "1"
+    deploy:
+      restart_policy:
+        condition: none
+    ports:
+      - "80:80"
+      - "443:443"
+
+  application:
+    deploy:
+      restart_policy:
+        condition: none
+    volumes:
+      - type: bind
+        source: ./scripts/
+        target: /scripts/
+        consistency: consistent
+
+  database:
+    deploy:
+      restart_policy:
+        condition: none
+    ports:
+      - "3306:3306"
+
+networks:
+  hostnet:
+    external: false
+    driver: bridge
+    name: hostnet
+  backend:
+    internal: false
+    driver: bridge

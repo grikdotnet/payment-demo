@@ -1,0 +1,111 @@
+version: "3.8"
+
+services:
+  router:
+    image: nginx:alpine
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        max_attempts: 300
+        delay: 30s
+        window: 20s
+    volumes:
+      # ACME account and certificates
+      - acme:/acme/:rw
+      # background issuing and renewing ACME certificates
+      - ./etc/nginx/50-acmesh.sh:/docker-entrypoint.d/50-acmesh.sh:ro
+      - ./etc/nginx/healthcheck.sh:/healthcheck.sh
+      - ./etc/nginx/nginx.conf:/etc/nginx/nginx.conf
+      # Communicate with PHP via Unix socket
+      - fpm-socket:/fpm-socket/
+    environment:
+      CERTIFICATE_DOMAIN_NAMES: "example.com www.example.com"
+      LOCAL_DOMAIN_NAME: "example.localhost"
+      ACCOUNTEMAIL: "test@example.com"
+    healthcheck:
+      test: /bin/sh /healthcheck.sh
+      interval: 2s
+      timeout: 5s
+      retries: 2
+      start_period: 15s
+    networks:
+      - hostnet
+
+  application:
+    image: php:7.4-fpm-alpine
+    volumes:
+      - fpm-socket:/fpm-socket/
+      - ./etc/php/php-entrypoint.sh:/entrypoint
+      - ./etc/php/php.ini:/usr/local/etc/php/php.ini:ro
+      - ./etc/php/fpm.conf:/usr/local/etc/php-fpm.conf:ro
+      # cache compiled extensions in a shared volume
+      - php-extensions:/usr/local/lib/php/extensions/
+      # application code
+      - type: bind
+        source: ./app/
+        target: /scripts/
+        consistency: delegated
+    entrypoint: ["/entrypoint"]
+    command: ["php-fpm"]
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        max_attempts: 20
+        delay: 2s
+        window: 10s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    environment:
+      MYSQL_USER:
+      MYSQL_PASSWORD:
+      MYSQL_DATABASE:
+    healthcheck:
+      test: SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET  cgi-fcgi -connect /fpm-socket/socket 1 | grep -q  'pong'
+      interval: 2s
+      timeout: 5s
+      retries: 2
+    networks:
+      - backend
+
+  database:
+    image: mysql:8
+    volumes:
+      - ./etc/mysql/custom.cnf:/etc/mysql/conf.d/custom.cnf:ro
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - db-data:/var/lib/mysql
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        max_attempts: 20
+        delay: 30s
+        window: 120s
+    environment:
+      - MYSQL_USER=
+      - MYSQL_PASSWORD=
+      - MYSQL_ROOT_PASSWORD=
+      - MYSQL_DATABASE=
+    healthcheck:
+      test: mysql -u$$MYSQL_USER --password=$$MYSQL_PASSWORD -e "quit" 2>/dev/null
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - backend
+
+volumes:
+  acme:
+  db-data:
+  fpm-socket:
+  php-extensions:
+
+networks:
+  hostnet:
+    external: true
+    name: host
+  backend:
+    internal: true
