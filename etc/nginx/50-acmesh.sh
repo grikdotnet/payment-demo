@@ -11,13 +11,14 @@ ACME_DIR=${ACME_DIR:-"/acme"}
 FULLCHAIN_FILE="${ACME_DIR}/certificate"
 KEY_FILE="${ACME_DIR}/key"
 
-echo "Installing openssl and acme.sh"
+echo "Installing openssl"
 
-apk --no-cache add -f openssl && wget -O -  https://get.acme.sh | sh
+apk --no-cache add -f openssl
 
-if ! $?; then
-  echo "Error installing packages"
-  exit 250
+if [ ! -f "${ACME_DIR}/dhparams.pem" ]; then
+    openssl dhparam -out "${ACME_DIR}/dhparams.pem" 2048
+    chmod 600 dhparams.pem
+    echo "Generated dhparams"
 fi
 
 #Generate a self-signed certificate for develoment environment and to let Nginx start
@@ -39,11 +40,7 @@ fi
 
 #In a production environment
 
-if [ ! -f "${ACME_DIR}/dhparams.pem" ]; then
-    openssl dhparam -out "${ACME_DIR}/dhparams.pem" 2048
-    chmod 600 dhparams.pem
-    echo "Generated dhparams"
-fi
+wget -O -  https://get.acme.sh | sh
 
 # Convert a list of domains to the command parameters
 DOMAINS=$(echo " ${CERTIFICATE_DOMAIN_NAMES}"| sed 's/[ ,]\+/ -d /g')

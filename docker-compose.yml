@@ -5,11 +5,6 @@ services:
     image: nginx:alpine
     deploy:
       replicas: 1
-      restart_policy:
-        condition: any
-        max_attempts: 300
-        delay: 30s
-        window: 20s
     volumes:
       # ACME account and certificates
       - acme:/acme/:rw
@@ -33,36 +28,20 @@ services:
       - hostnet
 
   application:
-    image: php:7.4-fpm-alpine
+    image: grigori/phpextensions:8.0-fpm
     volumes:
       - fpm-socket:/fpm-socket/
-      - ./etc/php/php-entrypoint.sh:/entrypoint
+      - ./etc/php/install-composer.sh:/docker-entrypoint-init.d/install-composer.sh
       - ./etc/php/php.ini:/usr/local/etc/php/php.ini:ro
       - ./etc/php/fpm.conf:/usr/local/etc/php-fpm.conf:ro
-      # cache compiled extensions in a shared volume
-      - php-extensions:/usr/local/lib/php/extensions/
       # application code
       - type: bind
         source: ./app/
         target: /scripts/
         consistency: delegated
-    entrypoint: ["/entrypoint"]
-    command: ["php-fpm"]
     deploy:
       replicas: 1
-      restart_policy:
-        condition: any
-        max_attempts: 20
-        delay: 2s
-        window: 10s
-      update_config:
-        parallelism: 1
-        delay: 10s
-        order: start-first
-    environment:
-      MYSQL_USER:
-      MYSQL_PASSWORD:
-      MYSQL_DATABASE:
+    env_file: .db.env
     healthcheck:
       test: SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET  cgi-fcgi -connect /fpm-socket/socket 1 | grep -q  'pong'
       interval: 2s
@@ -79,16 +58,9 @@ services:
       - db-data:/var/lib/mysql
     deploy:
       replicas: 1
-      restart_policy:
-        condition: on-failure
-        max_attempts: 20
-        delay: 30s
-        window: 120s
+    env_file: .db.env
     environment:
-      - MYSQL_USER=
-      - MYSQL_PASSWORD=
-      - MYSQL_ROOT_PASSWORD=
-      - MYSQL_DATABASE=
+      - MYSQL_ROOT_PASSWORD
     healthcheck:
       test: mysql -u$$MYSQL_USER --password=$$MYSQL_PASSWORD -e "quit" 2>/dev/null
       interval: 30s
@@ -97,11 +69,23 @@ services:
     networks:
       - backend
 
+  queue:
+    image: redis
+    volumes:
+      - redis-queue-data:/data
+    command: redis-server --appendonly yes
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        window: 20s
+
 volumes:
   acme:
   db-data:
+  redis-queue-data:
   fpm-socket:
-  php-extensions:
 
 networks:
   hostnet:

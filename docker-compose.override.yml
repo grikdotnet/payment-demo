@@ -5,27 +5,21 @@ services:
   router:
     environment:
       SELF_SIGNED_ONLY: "1"
-    deploy:
-      restart_policy:
-        condition: none
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
+      - "4443:443"
 
   application:
-    deploy:
-      restart_policy:
-        condition: none
     volumes:
       - type: bind
-        source: ./scripts/
+        source: ./app/
         target: /scripts/
         consistency: consistent
+    env_file: .db.env
 
   database:
-    deploy:
-      restart_policy:
-        condition: none
+    environment:
+      - MYSQL_ROOT_PASSWORD=111
     ports:
       - "3306:3306"
 
