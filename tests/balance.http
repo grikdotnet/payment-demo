@@ -1,0 +1,4 @@
+GET https://localhost:4443/api/account?id=11111111-0000-5678-1234-567812345678
+Accept: application/json
+
+###
